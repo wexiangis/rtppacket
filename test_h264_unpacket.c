@@ -101,6 +101,7 @@ int32_t MemFind(uint8_t* buff, int32_t buffSize)
 int main()
 {
     int32_t index = 0;
+    int32_t index2 = 0;
 
     int32_t frameSize = 0;
     uint8_t frame[1024*1024] = {0};
@@ -109,7 +110,7 @@ int main()
     uint8_t rtp[1024*8] = {0};
 
     RTP_PAYLOAD_TYPE type;
-    void* cache = RtpUnPacketCacheInit(32);
+    void* cache = RtpUnPacketCacheInit(512);
 
     do {
         rtpSize = ReadFile(rtp, sizeof(rtp));
@@ -123,17 +124,21 @@ int main()
                 &type, cache,
                 0, 0);
 
+            if (frameSize > 0)
+                index2 += 1;
+
             printf("rtp: %02X %02X %02X %02X, "
                 "ssrc: %02X%02X%02X%02X, "
                 "payload: %02X %02X, size/%d, index/%d - "
-                "pt/%d, %02X %02X %02X %02X %02X, frameSize/%d\r\n",
+                "pt/%d, %02X %02X %02X %02X %02X, "
+                "frameSize/%d, index/%d\r\n",
                 rtp[0], rtp[1], rtp[2], rtp[3],
                 rtp[8], rtp[9], rtp[10], rtp[11],
                 rtp[12], rtp[13],
                 rtpSize, index++,
                 type, 
                 frame[0], frame[1], frame[2], frame[3], frame[4],
-                frameSize);
+                frameSize, index2);
             
             if (frameSize > 0)
                 WriteFile(frame, frameSize);
