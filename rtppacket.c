@@ -16,30 +16,34 @@
 
 // payload[0] & 0x1F
 typedef enum {
-    H26X_FRAME_NAL_MIN = 1,
-    H26X_FRAME_PA = 2,
-    H26X_FRAME_PB = 3,
-    H26X_FRAME_PC = 4,
-    H26X_FRAME_IDR = 5,
-    H26X_FRAME_SEI = 6,
-    H26X_FRAME_SPS = 7,
-    H26X_FRAME_PPS = 8,
-    H26X_FRAME_NAL_MAX = 23, // 0x17
+    H264_FRAME_NAL_MIN = 1,
+    H264_FRAME_PA = 2,
+    H264_FRAME_PB = 3,
+    H264_FRAME_PC = 4,
+    H264_FRAME_IDR = 5,
+    H264_FRAME_SEI = 6,
+    H264_FRAME_SPS = 7,
+    H264_FRAME_PPS = 8,
 
-    H26X_FRAME_STAP_A = 24, // 0x18
-    H26X_FRAME_STAP_B = 25, // 0x19
-    H26X_FRAME_MTAP16 = 26, // 0x1A
-    H26X_FRAME_MTAP32 = 27, // 0x1B
-    H26X_FRAME_FU_A = 28, // 0x1C
-    H26X_FRAME_FU_B = 29, // 0x1D
-} H26X_FRAME_TYPE;
+    H264_FRAME_SVC1 = 14, // not supported now
+    H264_FRAME_SVC2 = 20, // not supported now
+
+    H264_FRAME_NAL_MAX = 23, // 0x17
+
+    H264_FRAME_STAP_A = 24, // 0x18
+    H264_FRAME_STAP_B = 25, // 0x19
+    H264_FRAME_MTAP16 = 26, // 0x1A
+    H264_FRAME_MTAP32 = 27, // 0x1B
+    H264_FRAME_FU_A = 28, // 0x1C
+    H264_FRAME_FU_B = 29, // 0x1D
+} H264_FRAME_TYPE;
 
 // payload[1] & 0xE0
 typedef enum {
-    H26X_FU_A_BEGIN = 0x80,
-    H26X_FU_A_MIDDLE = 0x00,
-    H26X_FU_A_END = 0x40,
-} H26X_FU_A_TYPE;
+    H264_FU_A_BEGIN = 0x80,
+    H264_FU_A_MIDDLE = 0x00,
+    H264_FU_A_END = 0x40,
+} H264_FU_A_TYPE;
 
 typedef enum {
     RTP_CIRCLE_FRAME_NONE = 0,
@@ -785,7 +789,7 @@ static int32_t RtpH264Packet(
         }
         else
         {
-            RTP_INFO("unknown h26x frame type, %02X %02X %02X %02X %02X, size/%d, ret/%d, offset/%d\r\n",
+            RTP_INFO("unknown h264 frame type, %02X %02X %02X %02X %02X, size/%d, ret/%d, offset/%d\r\n",
                 frame[0], frame[1], frame[2], frame[3], frame[4], frameSize, partSize, offset);
             break;
         }
@@ -795,13 +799,13 @@ static int32_t RtpH264Packet(
         {
             frameBegin = frame[0] & 0x1F;
 
-            // H26X_FU_A_BEGIN 
+            // H264_FU_A_BEGIN 
             RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 0);
             if (callback)
             {
                 rtp.payload[0] = 0x7C;
                 memcpy(&rtp.payload[1], frame, RTP_PACKET_PAYLOAD_DATA_SIZE);
-                rtp.payload[1] = H26X_FU_A_BEGIN | frameBegin;
+                rtp.payload[1] = H264_FU_A_BEGIN | frameBegin;
 
                 callback(priv, (uint8_t*)&rtp, RTP_PACKET_PAYLOAD_DATA_SIZE + sizeof(RtpHeader) + 1, type);
             }
@@ -812,14 +816,14 @@ static int32_t RtpH264Packet(
             retPkt += 1;
             *seq += 1;
             
-            // H26X_FU_A_MIDDLE
+            // H264_FU_A_MIDDLE
             while (partSize > RTP_PACKET_PAYLOAD_DATA_SIZE)
             {
                 RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 0);
                 if (callback)
                 {
                     rtp.payload[0] = 0x7C;
-                    rtp.payload[1] = H26X_FU_A_MIDDLE | frameBegin;
+                    rtp.payload[1] = H264_FU_A_MIDDLE | frameBegin;
                     memcpy(&rtp.payload[2], frame, RTP_PACKET_PAYLOAD_DATA_SIZE);
 
                     callback(priv, (uint8_t*)&rtp, RTP_PACKET_PAYLOAD_DATA_SIZE + sizeof(RtpHeader) + 2, type);
@@ -832,12 +836,12 @@ static int32_t RtpH264Packet(
                 *seq += 1;
             }
 
-            // H26X_FU_A_END
+            // H264_FU_A_END
             RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
             if (callback)
             {
                 rtp.payload[0] = 0x7C;
-                rtp.payload[1] = H26X_FU_A_END | frameBegin;
+                rtp.payload[1] = H264_FU_A_END | frameBegin;
                 memcpy(&rtp.payload[2], frame, partSize);
 
                 callback(priv, (uint8_t*)&rtp, partSize + sizeof(RtpHeader) + 2, type);
@@ -941,15 +945,15 @@ static int32_t RtpH264UnPacket(
     {
         switch (payload[0] & 0x1F)
         {
-            case H26X_FRAME_NAL_MIN:
-            case H26X_FRAME_PA:
-            case H26X_FRAME_PB:
-            case H26X_FRAME_PC:
-            case H26X_FRAME_IDR:
-            case H26X_FRAME_SEI:
-            case H26X_FRAME_SPS:
-            case H26X_FRAME_PPS:
-            case H26X_FRAME_NAL_MAX:
+            case H264_FRAME_NAL_MIN:
+            case H264_FRAME_PA:
+            case H264_FRAME_PB:
+            case H264_FRAME_PC:
+            case H264_FRAME_IDR:
+            case H264_FRAME_SEI:
+            case H264_FRAME_SPS:
+            case H264_FRAME_PPS:
+            case H264_FRAME_NAL_MAX:
             {
                 // frame header
                 memcpy(pFrame, gH264Header, sizeof(gH264Header));
@@ -962,9 +966,9 @@ static int32_t RtpH264UnPacket(
                 // cache in
                 RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
             }
-            break; // case H26X_FRAME_NAL_MAX:
+            break; // case H264_FRAME_NAL_MAX:
 
-            case H26X_FRAME_STAP_A:
+            case H264_FRAME_STAP_A:
             {
                 dataSize = 0;
                 dataOffset = 1;
@@ -998,34 +1002,42 @@ static int32_t RtpH264UnPacket(
                 if (dataSize > 0)
                     RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
             }
-            break; // case H26X_FRAME_STAP_A:
+            break; // case H264_FRAME_STAP_A:
 
-            case H26X_FRAME_STAP_B:
+            case H264_FRAME_SVC1:
+            case H264_FRAME_SVC2:
             {
-                RTP_INFO("H26X_FRAME_STAP_B not supported now \r\n");
+                RTP_INFO("H264_FRAME_SVC not supported now \r\n");
                 dataSize = 0;
             }
-            break; // case H26X_FRAME_STAP_B:
+            break; // case H264_FRAME_SVC:
 
-            case H26X_FRAME_MTAP16:
+            case H264_FRAME_STAP_B:
             {
-                RTP_INFO("H26X_FRAME_MTAP16 not supported now \r\n");
+                RTP_INFO("H264_FRAME_STAP_B not supported now \r\n");
                 dataSize = 0;
             }
-            break; // case H26X_FRAME_MTAP16:
+            break; // case H264_FRAME_STAP_B:
 
-            case H26X_FRAME_MTAP32:
+            case H264_FRAME_MTAP16:
             {
-                RTP_INFO("H26X_FRAME_MTAP32 not supported now \r\n");
+                RTP_INFO("H264_FRAME_MTAP16 not supported now \r\n");
                 dataSize = 0;
             }
-            break; // case H26X_FRAME_MTAP32:
+            break; // case H264_FRAME_MTAP16:
 
-            case H26X_FRAME_FU_A:
+            case H264_FRAME_MTAP32:
+            {
+                RTP_INFO("H264_FRAME_MTAP32 not supported now \r\n");
+                dataSize = 0;
+            }
+            break; // case H264_FRAME_MTAP32:
+
+            case H264_FRAME_FU_A:
             {
                 switch (payload[1] & 0xE0)
                 {
-                    case H26X_FU_A_BEGIN:
+                    case H264_FU_A_BEGIN:
                     {
                         // frame header
                         memcpy(pFrame, gH264Header, sizeof(gH264Header));
@@ -1038,9 +1050,9 @@ static int32_t RtpH264UnPacket(
                         // cache in
                         RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_BEGIN, seq, rcc);
                     }
-                    break; // case H26X_FU_A_BEGIN:
+                    break; // case H264_FU_A_BEGIN:
 
-                    case H26X_FU_A_MIDDLE:
+                    case H264_FU_A_MIDDLE:
                     {
                         // frame data
                         memcpy(pFrame, &payload[2], payloadSize - 2);
@@ -1049,9 +1061,9 @@ static int32_t RtpH264UnPacket(
                         // no copy out
                         dataSize = 0;
                     }
-                    break; // case H26X_FU_A_MIDDLE:
+                    break; // case H264_FU_A_MIDDLE:
 
-                    case H26X_FU_A_END:
+                    case H264_FU_A_END:
                     {
                         // frame data
                         memcpy(pFrame, &payload[2], payloadSize - 2);
@@ -1059,22 +1071,22 @@ static int32_t RtpH264UnPacket(
                         // cache in
                         RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_END, seq, rcc);
                     }
-                    break; // case H26X_FU_A_END:
+                    break; // case H264_FU_A_END:
                 }
             }
-            break; // case H26X_FRAME_FU_A:
+            break; // case H264_FRAME_FU_A:
 
-            case H26X_FRAME_FU_B:
+            case H264_FRAME_FU_B:
             {
-                RTP_INFO("H26X_FRAME_FU_B not supported now \r\n");
+                RTP_INFO("H264_FRAME_FU_B not supported now \r\n");
                 dataSize = 0;
             }
-            break; // case H26X_FRAME_FU_B:
+            break; // case H264_FRAME_FU_B:
         }
 
         if (dataSize < 0)
         {
-            RTP_INFO("unknown h26x frame type, payload[%02X %02X], payloadSize/%d\r\n",
+            RTP_INFO("unknown h264 frame type, payload[%02X %02X], payloadSize/%d\r\n",
                 payload[0], payload[1], payloadSize);
             // return dataSize;
         }
