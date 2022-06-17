@@ -7,12 +7,14 @@
 
 /* ========================= param define ========================= */
 
-#define RTP_PACKET_PAYLOAD_SIZE 1500 // 收rtp时payload预留大小
+#define RTP_PACKET_PAYLOAD_SIZE 1500      // 收rtp时payload预留大小
 #define RTP_PACKET_PAYLOAD_DATA_SIZE 1400 // 发rtp包时最大payload大小
-
-#define RTP_PACKET_PAYLOAD_PCM_SZIE 160 // g711a & g711u
+#define RTP_PACKET_PAYLOAD_PCM_SZIE 160   // g711a & g711u 单包数据量
 
 #define RTP_CIRCLE_FRAME_TIMEOUT_DIV 32 // 单帧等待时长不超过1/32循环缓冲区大小
+
+// #define RTP_PACKET_MERGE_SPS_PPS 0       // 视频打rtp包时,合并 SPS,PPS 帧为 STAP_A 包
+#define RTP_UNPACKET_MERGE_SPS_PPS_IDR 1 // 视频解rtp包时,合并 SPS,PPS,IDR 帧
 
 // payload[0] & 0x1F
 typedef enum {
@@ -142,6 +144,7 @@ typedef struct
 
 typedef struct {
     RTP_CIRCLE_FRAME_TYPE type;
+    uint32_t frameType;
     uint32_t frameSize;
     uint8_t frame[RTP_PACKET_PAYLOAD_SIZE];
 } RtpCirclePacket;
@@ -154,6 +157,12 @@ typedef struct {
     int32_t frameCount;
     int32_t frameTimeout;
     int32_t packetCount; // 缓存packet个数
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+    uint8_t spsFrame[64];
+    uint8_t ppsFrame[64];
+    uint32_t spsFrameSize;
+    uint32_t ppsFrameSize;
+#endif
     RtpCirclePacket* packets; // packet数组
 } RtpCircleCache;
 
@@ -469,25 +478,21 @@ void* RtpUnPacketCacheInit(int32_t packetCount)
     return ret;
 }
 
-void RtpUnPacketCacheRelease(void** cache)
+void RtpUnPacketCacheRelease(void* cache)
 {
     RtpCircleCache* rcc;
     if (cache)
     {
-        if (*cache)
-        {
-            rcc = (RtpCircleCache*)(*cache);
-            if (rcc->packets)
-                free(rcc->packets);
-            free(rcc);
-        }
-        *cache = NULL;
+        rcc = (RtpCircleCache*)cache;
+        if (rcc->packets)
+            free(rcc->packets);
+        free(rcc);
     }
 }
 
 static void RtpCircleCacheIn(
     uint8_t* frame, int32_t frameSize,
-    RTP_CIRCLE_FRAME_TYPE type,
+    RTP_CIRCLE_FRAME_TYPE type, uint32_t frameType,
     uint16_t seq, RtpCircleCache* rcc)
 {
     RtpCirclePacket* packet = &rcc->packets[seq % rcc->packetCount];
@@ -506,20 +511,28 @@ static void RtpCircleCacheIn(
     {
         RTP_INFO("error frameSize(%d) > payloadSize(%d) \r\n",
             frameSize, RTP_PACKET_PAYLOAD_SIZE);
-        memcpy(packet->frame, frame, RTP_PACKET_PAYLOAD_SIZE);
+        return;
     }
-    else
-    {
-        memcpy(packet->frame, frame, frameSize);
-    }
+    memcpy(packet->frame, frame, frameSize);
     packet->type = type;
+    packet->frameType = frameType;
     packet->frameSize = frameSize;
 
     // refresh seqMax
     rcc->seqMax = (seq + 1) % rcc->packetCount;
-
     // count++
     rcc->count += 1;
+
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+    if (frameType == H264_FRAME_SPS && frameSize < 64) {
+        memcpy(rcc->spsFrame, frame, frameSize);
+        rcc->spsFrameSize = frameSize;
+    }
+    else if (frameType == H264_FRAME_PPS && frameSize < 64) {
+        memcpy(rcc->ppsFrame, frame, frameSize);
+        rcc->ppsFrameSize = frameSize;
+    }
+#endif
 }
 
 static int32_t RtpCircleCacheOut(
@@ -544,6 +557,17 @@ static int32_t RtpCircleCacheOut(
         {
             if (rcc->packets[seqIndex].frameSize > 0)
             {
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+                if (rcc->packets[seqIndex].frameType == H264_FRAME_SPS ||
+                    rcc->packets[seqIndex].frameType == H264_FRAME_PPS)
+                {
+                    // clean
+                    rcc->packets[seqIndex].frameType = 0;
+                    rcc->packets[seqIndex].frameSize = 0;
+                    rcc->packets[seqIndex].type = RTP_CIRCLE_FRAME_NONE;
+                }
+                else 
+#endif
                 if (rcc->packets[seqIndex].type == RTP_CIRCLE_FRAME_SINGLE)
                 {
                     hitType = RTP_CIRCLE_FRAME_SINGLE;
@@ -583,18 +607,48 @@ static int32_t RtpCircleCacheOut(
     // 这是独立包
     if (hitType == RTP_CIRCLE_FRAME_SINGLE)
     {
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+        // 为 IDR 时添加 SPS,PPS 部分
+        if (rcc->packets[seqIndex].frameType == H264_FRAME_IDR &&
+            rcc->spsFrameSize > 0 && rcc->ppsFrameSize > 0)
+        {
+            memcpy(frame, rcc->spsFrame, rcc->spsFrameSize);
+            frame += rcc->spsFrameSize;
+            retSize += rcc->spsFrameSize;
+            memcpy(frame, rcc->ppsFrame, rcc->ppsFrameSize);
+            frame += rcc->ppsFrameSize;
+            retSize += rcc->ppsFrameSize;
+        }
+#endif
         // copy out
         memcpy(frame, rcc->packets[seqIndex].frame, rcc->packets[seqIndex].frameSize);
-        retSize = rcc->packets[seqIndex].frameSize;
+        retSize += rcc->packets[seqIndex].frameSize;
         // clean
+        rcc->packets[seqIndex].frameType = 0;
         rcc->packets[seqIndex].frameSize = 0;
         rcc->packets[seqIndex].type = RTP_CIRCLE_FRAME_NONE;
     }
+
     // 这是分包,组合分包
     else if (hitType == RTP_CIRCLE_FRAME_END)
     {
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+        // 为 IDR 时添加 SPS,PPS 部分
+        if (rcc->packets[seqBegin].frameType == H264_FRAME_IDR &&
+            rcc->spsFrameSize > 0 && rcc->ppsFrameSize > 0)
+        {
+            memcpy(frame, rcc->spsFrame, rcc->spsFrameSize);
+            frame += rcc->spsFrameSize;
+            retSize += rcc->spsFrameSize;
+            memcpy(frame, rcc->ppsFrame, rcc->ppsFrameSize);
+            frame += rcc->ppsFrameSize;
+            retSize += rcc->ppsFrameSize;
+        }
+#endif
+        // 以 seqBegin 为序号遍历组合分包
         do
         {
+            // 确定是三种包之一
             if (rcc->packets[seqBegin].type >= RTP_CIRCLE_FRAME_BEGIN &&
                 rcc->packets[seqBegin].type <= RTP_CIRCLE_FRAME_END)
             {
@@ -611,6 +665,7 @@ static int32_t RtpCircleCacheOut(
                     retSize += rcc->packets[seqBegin].frameSize;
                 }
                 // clean
+                rcc->packets[seqBegin].frameType = 0;
                 rcc->packets[seqBegin].frameSize = 0;
                 rcc->packets[seqBegin].type = RTP_CIRCLE_FRAME_NONE;
             }
@@ -618,6 +673,7 @@ static int32_t RtpCircleCacheOut(
             if (seqBegin == seqIndex)
                 break;
             
+            // 序号+1, 同时保证不越界循环缓冲区
             seqBegin = (seqBegin + 1) % rcc->packetCount;
         } while (1);
     }
@@ -815,7 +871,7 @@ static int32_t RtpH264Packet(
 
             retPkt += 1;
             *seq += 1;
-            
+
             // H264_FU_A_MIDDLE
             while (partSize > RTP_PACKET_PAYLOAD_DATA_SIZE)
             {
@@ -877,7 +933,7 @@ static int32_t RtpPCMUnPacket(
     uint16_t seq, RtpCircleCache* rcc)
 {
     if (payloadSize > 0)
-        RtpCircleCacheIn(payload, payloadSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
+        RtpCircleCacheIn(payload, payloadSize, RTP_CIRCLE_FRAME_SINGLE, 0, seq, rcc);
     return RtpCircleCacheOut(frame, frameSize, rcc);
 }
 
@@ -925,7 +981,7 @@ static int32_t RtpAACUnPacket(
     }
 
     if (dataSize > 0)
-        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
+        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, 0, seq, rcc);
 
     return RtpCircleCacheOut(frame, frameSize, rcc);
 }
@@ -936,14 +992,15 @@ static int32_t RtpH264UnPacket(
     uint16_t seq, RtpCircleCache* rcc)
 {
     uint8_t* pFrame = frame;
-
+    uint32_t frameType = 0;
     int32_t dataOffset = -1;
     int32_t dataSize = -1;
     int32_t dataSizeTmp = -1;
 
     if (payloadSize > 2 && frameSize >= payloadSize)
     {
-        switch (payload[0] & 0x1F)
+        frameType = payload[0] & 0x1F;
+        switch (frameType)
         {
             case H264_FRAME_NAL_MIN:
             case H264_FRAME_PA:
@@ -959,12 +1016,12 @@ static int32_t RtpH264UnPacket(
                 memcpy(pFrame, gH264Header, sizeof(gH264Header));
                 pFrame += sizeof(gH264Header);
                 // frame type
-                *pFrame++ = (payload[0] & 0x1F) | 0x60;
+                *pFrame++ = (payload[0] & 0x7F);
                 // frame data
                 memcpy(pFrame, &payload[1], payloadSize - 1);
                 dataSize = payloadSize + sizeof(gH264Header);
                 // cache in
-                RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
+                RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, frameType, seq, rcc);
             }
             break; // case H264_FRAME_NAL_MAX:
 
@@ -972,7 +1029,7 @@ static int32_t RtpH264UnPacket(
             {
                 dataSize = 0;
                 dataOffset = 1;
-                // loop: [len][data][len][data][..][..]
+                // loop: [len:2][data:N][len:2][data:N][..][..]
                 while (dataOffset < payloadSize)
                 {
                     dataSizeTmp = ((uint16_t)payload[dataOffset++]) << 8;
@@ -983,7 +1040,8 @@ static int32_t RtpH264UnPacket(
                         memcpy(pFrame, gH264Header, sizeof(gH264Header));
                         pFrame += sizeof(gH264Header);
                         // frame type
-                        *pFrame = (payload[dataOffset] & 0x1F) | 0x60;
+                        frameType = payload[dataOffset] & 0x1F;
+                        *pFrame = (payload[dataOffset] & 0x7F);
                         pFrame += 1;
                         dataOffset += 1;
                         // frame data
@@ -991,7 +1049,12 @@ static int32_t RtpH264UnPacket(
                         pFrame += dataSizeTmp - 1;
                         dataOffset += dataSizeTmp - 1;
                         // cache in
+#if RTP_UNPACKET_MERGE_SPS_PPS_IDR
+                        RtpCircleCacheIn(frame, dataSizeTmp + sizeof(gH264Header), RTP_CIRCLE_FRAME_SINGLE, frameType, seq, rcc);
+                        pFrame = frame;
+#else
                         dataSize += dataSizeTmp + sizeof(gH264Header);
+#endif
                     }
                     else
                     {
@@ -999,8 +1062,10 @@ static int32_t RtpH264UnPacket(
                     }
                 }
 
+#if !RTP_UNPACKET_MERGE_SPS_PPS_IDR
                 if (dataSize > 0)
-                    RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, seq, rcc);
+                    RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_SINGLE, payload[3] & 0x1F, seq, rcc);
+#endif
             }
             break; // case H264_FRAME_STAP_A:
 
@@ -1035,7 +1100,7 @@ static int32_t RtpH264UnPacket(
 
             case H264_FRAME_FU_A:
             {
-                switch (payload[1] & 0xE0)
+                switch (payload[1] & 0xC0)
                 {
                     case H264_FU_A_BEGIN:
                     {
@@ -1043,12 +1108,17 @@ static int32_t RtpH264UnPacket(
                         memcpy(pFrame, gH264Header, sizeof(gH264Header));
                         pFrame += sizeof(gH264Header);
                         // frame type
-                        *pFrame++ = (payload[1] & 0x1F) | 0x60;
+                        frameType = payload[1] & 0x1F;
+                        *pFrame = (payload[1] & 0x1F);
+                        if (frameType == H264_FRAME_NAL_MIN)
+                            *pFrame++ |= 0x40;
+                        else
+                            *pFrame++ |= 0x60;
                         // frame data
                         memcpy(pFrame, &payload[2], payloadSize - 2);
                         dataSize = sizeof(gH264Header) + payloadSize - 1;
                         // cache in
-                        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_BEGIN, seq, rcc);
+                        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_BEGIN, frameType, seq, rcc);
                     }
                     break; // case H264_FU_A_BEGIN:
 
@@ -1057,7 +1127,7 @@ static int32_t RtpH264UnPacket(
                         // frame data
                         memcpy(pFrame, &payload[2], payloadSize - 2);
                         // cache in
-                        RtpCircleCacheIn(frame, payloadSize - 2, RTP_CIRCLE_FRAME_MID, seq, rcc);
+                        RtpCircleCacheIn(frame, payloadSize - 2, RTP_CIRCLE_FRAME_MID, 0, seq, rcc);
                         // no copy out
                         dataSize = 0;
                     }
@@ -1069,7 +1139,7 @@ static int32_t RtpH264UnPacket(
                         memcpy(pFrame, &payload[2], payloadSize - 2);
                         dataSize = payloadSize - 2;
                         // cache in
-                        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_END, seq, rcc);
+                        RtpCircleCacheIn(frame, dataSize, RTP_CIRCLE_FRAME_END, 0, seq, rcc);
                     }
                     break; // case H264_FU_A_END:
                 }
@@ -1134,7 +1204,9 @@ int32_t RtpPacket(
         break;
 
         case RTP_PAYLOAD_TYPE_H264:
-        case RTP_PAYLOAD_TYPE_H264_30FPS:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN1:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN2:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN3:
         {
             ret = RtpH264Packet(
                 frame, frameSize,
@@ -1169,7 +1241,8 @@ int32_t RtpUnPacket(
     if (!rtp || !frame || rtpSize < 14)
         return -1;
 
-    *type = (RTP_PAYLOAD_TYPE)(rtpStruct->header.pt);
+    if (type)
+        *type = (RTP_PAYLOAD_TYPE)(rtpStruct->header.pt);
     seq = ((uint16_t)rtpStruct->header.seq[0] << 8) | rtpStruct->header.seq[1];
 
     // get payload
@@ -1212,7 +1285,9 @@ int32_t RtpUnPacket(
         break;
 
         case RTP_PAYLOAD_TYPE_H264:
-        case RTP_PAYLOAD_TYPE_H264_30FPS:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN1:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN2:
+        case RTP_PAYLOAD_TYPE_H264_UNKNOWN3:
         {
             retFrameSize = RtpH264UnPacket(
                 &rtpStruct->payload[0],

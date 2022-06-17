@@ -126,7 +126,7 @@ int main()
 
     ReadFile(NULL, 0);
     WriteFile(NULL, 0);
-    RtpUnPacketCacheRelease(&cache);
+    RtpUnPacketCacheRelease(cache);
 
     return 0;
 }

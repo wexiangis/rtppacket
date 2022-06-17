@@ -21,7 +21,9 @@ typedef enum
     RTP_PAYLOAD_TYPE_H264 = 96,
     RTP_PAYLOAD_TYPE_AAC = 97,
 
-    RTP_PAYLOAD_TYPE_H264_30FPS = 118,
+    RTP_PAYLOAD_TYPE_H264_UNKNOWN1 = 114,
+    RTP_PAYLOAD_TYPE_H264_UNKNOWN2 = 118,
+    RTP_PAYLOAD_TYPE_H264_UNKNOWN3 = 123,
 } RTP_PAYLOAD_TYPE;
 
 /*
@@ -87,6 +89,6 @@ int32_t RtpUnPacket(
  *      packetCount: 缓存包数量(每包最多1500字节),建议音频不小于128,视频不小于512
  */
 void* RtpUnPacketCacheInit(int32_t packetCount);
-void RtpUnPacketCacheRelease(void** cache);
+void RtpUnPacketCacheRelease(void* cache);
 
 #endif // _RTP_PACKET_H_

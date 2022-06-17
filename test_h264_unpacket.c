@@ -129,11 +129,14 @@ int main()
 
             printf("rtp: %02X %02X %02X %02X, "
                 "ssrc: %02X%02X%02X%02X, "
-                "payload: %02X %02X, size/%d, index/%d - "
+                "tm: %02X%02X%02X%02X, "
+                "payload: %02X %02X, size/%d, "
+                "index/%d - "
                 "pt/%d, %02X %02X %02X %02X %02X, "
                 "frameSize/%d, index/%d\r\n",
                 rtp[0], rtp[1], rtp[2], rtp[3],
                 rtp[8], rtp[9], rtp[10], rtp[11],
+                rtp[4], rtp[5], rtp[6], rtp[7],
                 rtp[12], rtp[13],
                 rtpSize, index++,
                 type, 
@@ -147,7 +150,7 @@ int main()
 
     ReadFile(NULL, 0);
     WriteFile(NULL, 0);
-    RtpUnPacketCacheRelease(&cache);
+    RtpUnPacketCacheRelease(cache);
 
     return 0;
 }
