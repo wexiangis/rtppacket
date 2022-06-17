@@ -118,6 +118,7 @@ int main()
         if (frameSize > 7)
         {
             pktNum = RtpPacket(
+                NULL,
                 frame, frameSize,
                 &seq, &tm, duration,
                 ssrc, type,

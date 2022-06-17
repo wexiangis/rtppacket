@@ -60,6 +60,7 @@ int32_t AACSeek(
  *  返回: 成功返回rtp发包数, 失败返回-1
  */
 int32_t RtpPacket(
+    void* cache,
     uint8_t* frame, int32_t frameSize,
     uint16_t* seq, uint32_t* tm, uint32_t duration,
     uint32_t ssrc, RTP_PAYLOAD_TYPE type,
@@ -77,10 +78,10 @@ int32_t RtpPacket(
  *  返回: 成功返回帧数据长度, 失败返回-1
  */
 int32_t RtpUnPacket(
+    void* cache,
     uint8_t* rtp, int32_t rtpSize,
     uint8_t* frame, int32_t frameSize,
     RTP_PAYLOAD_TYPE* type,
-    void* cache,
     uint16_t chn, uint16_t freq);
 
 /*
@@ -90,5 +91,8 @@ int32_t RtpUnPacket(
  */
 void* RtpUnPacketCacheInit(int32_t packetCount);
 void RtpUnPacketCacheRelease(void* cache);
+
+void* RtpPacketCacheInit();
+void RtpPacketCacheRelease(void* cache);
 
 #endif // _RTP_PACKET_H_

@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
+// #define READ_FILE "./out.aac_2x44100.rtp"
 #define READ_FILE "./data/aac_2x44100.rtp"
 #define WRITE_FILE "./out.2x44100.aac"
 
@@ -100,10 +101,10 @@ int main()
             memset(frame, 0, sizeof(frame));
         
             frameSize = RtpUnPacket(
+                cache,
                 rtp, rtpSize,
                 frame, sizeof(frame),
-                &type, cache,
-                2, 44100);
+                &type, 2, 44100);
 
             printf("rtp: %02X %02X %02X %02X, "
                 "ssrc: %02X%02X%02X%02X, "

@@ -112,12 +112,15 @@ int main()
     uint32_t ssrc = 0x12345678;
     RTP_PAYLOAD_TYPE type = RTP_PAYLOAD_TYPE_H264;
 
+    void* cache = RtpPacketCacheInit();
+
     do {
         frameSize = ReadFile(frame, sizeof(frame), &width, &height, &fps);
 
         if (frameSize > 4)
         {
             pktNum = RtpPacket(
+                cache,
                 frame, frameSize,
                 &seq, &tm, duration,
                 ssrc, type,
@@ -133,6 +136,7 @@ int main()
 
     ReadFile(NULL, 0, NULL, NULL, NULL);
     WriteFile(NULL, 0);
+    RtpPacketCacheRelease(cache);
 
     return 0;
 }

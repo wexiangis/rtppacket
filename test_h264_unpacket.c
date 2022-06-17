@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
+// #define READ_FILE "./out.h264.rtp"
 #define READ_FILE "./data/h264.rtp"
 #define WRITE_FILE "./out.h264"
 
@@ -119,10 +120,10 @@ int main()
             memset(frame, 0, sizeof(frame));
         
             frameSize = RtpUnPacket(
+                cache,
                 rtp, rtpSize,
                 frame, sizeof(frame),
-                &type, cache,
-                0, 0);
+                &type, 0, 0);
 
             if (frameSize > 0)
                 index2 += 1;

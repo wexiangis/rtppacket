@@ -92,6 +92,7 @@ int main()
             *((uint16_t*)frame) = (uint16_t)index;
 
             pktNum = RtpPacket(
+                NULL,
                 frame, frameSize,
                 &seq, &tm, duration,
                 ssrc, type,
