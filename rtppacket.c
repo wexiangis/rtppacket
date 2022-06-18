@@ -168,9 +168,7 @@ typedef struct {
 
 typedef struct {
     uint8_t spsFrame[64];
-    uint8_t ppsFrame[64];
     uint32_t spsFrameSize;
-    uint32_t ppsFrameSize;
 } RtpFrameCache;
 
 static const uint8_t gH264Header[4] = {0, 0, 0, 1};
@@ -842,7 +840,8 @@ static int32_t RtpH264Packet(
     int32_t partSize = 0;
     int32_t retPkt = 0;
     int32_t offset = 0;
-    uint8_t frameBegin = 0;
+    uint8_t frameType = 0;
+    uint8_t fuaHead = 0;
 
     while (frameSize > 4)
     {
@@ -878,18 +877,20 @@ static int32_t RtpH264Packet(
             break;
         }
 
+        frameType = frame[0] & 0x1F;
+
         // multi rtp frame
         if (partSize > RTP_PACKET_PAYLOAD_DATA_SIZE)
         {
-            frameBegin = frame[0] & 0x1F;
+            fuaHead = H264_FRAME_FU_A | (frame[0] & 0x60);
 
             // H264_FU_A_BEGIN 
             RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 0);
             if (callback)
             {
-                rtp.payload[0] = 0x7C;
+                rtp.payload[0] = fuaHead;
                 memcpy(&rtp.payload[1], frame, RTP_PACKET_PAYLOAD_DATA_SIZE);
-                rtp.payload[1] = H264_FU_A_BEGIN | frameBegin;
+                rtp.payload[1] = H264_FU_A_BEGIN | frameType;
 
                 callback(priv, (uint8_t*)&rtp, RTP_PACKET_PAYLOAD_DATA_SIZE + sizeof(RtpHeader) + 1, type);
             }
@@ -906,8 +907,8 @@ static int32_t RtpH264Packet(
                 RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 0);
                 if (callback)
                 {
-                    rtp.payload[0] = 0x7C;
-                    rtp.payload[1] = H264_FU_A_MIDDLE | frameBegin;
+                    rtp.payload[0] = fuaHead;
+                    rtp.payload[1] = H264_FU_A_MIDDLE | frameType;
                     memcpy(&rtp.payload[2], frame, RTP_PACKET_PAYLOAD_DATA_SIZE);
 
                     callback(priv, (uint8_t*)&rtp, RTP_PACKET_PAYLOAD_DATA_SIZE + sizeof(RtpHeader) + 2, type);
@@ -924,29 +925,85 @@ static int32_t RtpH264Packet(
             RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
             if (callback)
             {
-                rtp.payload[0] = 0x7C;
-                rtp.payload[1] = H264_FU_A_END | frameBegin;
+                rtp.payload[0] = fuaHead;
+                rtp.payload[1] = H264_FU_A_END | frameType;
                 memcpy(&rtp.payload[2], frame, partSize);
 
                 callback(priv, (uint8_t*)&rtp, partSize + sizeof(RtpHeader) + 2, type);
             }
+
+            frame += partSize;
+            partSize = 0;
+
+            retPkt += 1;
+            *seq += 1;
         }
         // single rtp frame
         else
         {
-            RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
-            if (callback)
+#if RTP_PACKET_MERGE_SPS_PPS
+            if (rfc)
+#else
+            if (0)
+#endif
             {
-                memcpy(rtp.payload, frame, partSize);
-                callback(priv, (uint8_t*)&rtp, partSize + sizeof(RtpHeader), type);
+                if ((frame[0] & 0x1F) == H264_FRAME_PPS && partSize < 64 && rfc->spsFrameSize > 0)
+                {
+                    // stap_a head
+                    offset = 0;
+                    RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
+                    rtp.payload[offset++] = H264_FRAME_STAP_A | 0x20;
+                    // len + data - sps frame
+                    rtp.payload[offset++] = (uint8_t)((rfc->spsFrameSize >> 8) & 0xFF);
+                    rtp.payload[offset++] = (uint8_t)(rfc->spsFrameSize & 0xFF);
+                    memcpy(&rtp.payload[offset], rfc->spsFrame, rfc->spsFrameSize);
+                    offset += rfc->spsFrameSize;
+                    rfc->spsFrameSize = 0; // clean
+                    // len + data - pps frame
+                    rtp.payload[offset++] = (uint8_t)((partSize >> 8) & 0xFF);
+                    rtp.payload[offset++] = (uint8_t)(partSize & 0xFF);
+                    memcpy(&rtp.payload[offset], frame, partSize);
+                    offset += partSize;
+
+                    if (callback)
+                    {
+                        callback(priv, (uint8_t*)&rtp, offset + sizeof(RtpHeader), type);
+                    }
+                }
+                else if ((frame[0] & 0x1F) == H264_FRAME_SPS && partSize < 64)
+                {
+                    // pps frame not found ?
+                    if (rfc->spsFrameSize > 0)
+                    {
+                        RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
+                        if (callback)
+                        {
+                            memcpy(rtp.payload, frame, partSize);
+                            callback(priv, (uint8_t*)&rtp, partSize + sizeof(RtpHeader), type);
+                        }
+                    }
+
+                    memcpy(rfc->spsFrame, frame, partSize);
+                    rfc->spsFrameSize = partSize;
+                }
             }
+            else
+            {
+                RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
+                if (callback)
+                {
+                    memcpy(rtp.payload, frame, partSize);
+                    callback(priv, (uint8_t*)&rtp, partSize + sizeof(RtpHeader), type);
+                }
+            }
+
+            frame += partSize;
+            partSize = 0;
+            
+            retPkt += 1;
+            *seq += 1;
         }
 
-        frame += partSize;
-        partSize = 0;
-        
-        retPkt += 1;
-        *seq += 1;
         *tm += duration;
     }
 
@@ -1139,11 +1196,7 @@ static int32_t RtpH264UnPacket(
                         pFrame += sizeof(gH264Header);
                         // frame type
                         frameType = payload[1] & 0x1F;
-                        *pFrame = (payload[1] & 0x1F);
-                        if (frameType == H264_FRAME_NAL_MIN)
-                            *pFrame++ |= 0x40;
-                        else
-                            *pFrame++ |= 0x60;
+                        *pFrame++ = (payload[1] & 0x1F) | (payload[0] & 0x60);
                         // frame data
                         memcpy(pFrame, &payload[2], payloadSize - 2);
                         dataSize = sizeof(gH264Header) + payloadSize - 1;
