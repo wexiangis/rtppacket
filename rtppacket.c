@@ -952,7 +952,7 @@ static int32_t RtpH264Packet(
                     // stap_a head
                     offset = 0;
                     RtpHeaderPacket(&rtp.header, type, *seq, *tm, ssrc, 1);
-                    rtp.payload[offset++] = H264_FRAME_STAP_A | 0x20;
+                    rtp.payload[offset++] = H264_FRAME_STAP_A | (rfc->spsFrame & 0x60);
                     // len + data - sps frame
                     rtp.payload[offset++] = (uint8_t)((rfc->spsFrameSize >> 8) & 0xFF);
                     rtp.payload[offset++] = (uint8_t)(rfc->spsFrameSize & 0xFF);
