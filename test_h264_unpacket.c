@@ -110,7 +110,6 @@ int main()
     int32_t rtpSize = 0;
     uint8_t rtp[1024*8] = {0};
 
-    RTP_PAYLOAD_TYPE type;
     void* cache = RtpUnPacketCacheInit(512);
 
     do {
@@ -123,7 +122,7 @@ int main()
                 cache,
                 rtp, rtpSize,
                 frame, sizeof(frame),
-                &type, 0, 0);
+                RTP_PAYLOAD_TYPE_H264, 0, 0);
 
             if (frameSize > 0)
                 index2 += 1;
@@ -140,7 +139,7 @@ int main()
                 rtp[4], rtp[5], rtp[6], rtp[7],
                 rtp[12], rtp[13],
                 rtpSize, index++,
-                type, 
+                rtp[1] & 0x7F, 
                 frame[0], frame[1], frame[2], frame[3], frame[4],
                 frameSize, index2);
             

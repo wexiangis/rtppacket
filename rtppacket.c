@@ -1290,9 +1290,6 @@ int32_t RtpPacket(
         break;
 
         case RTP_PAYLOAD_TYPE_H264:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN1:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN2:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN3:
         {
             ret = RtpH264Packet(
                 (RtpFrameCache*)cache,
@@ -1318,7 +1315,7 @@ int32_t RtpUnPacket(
     void* cache,
     uint8_t* rtp, int32_t rtpSize,
     uint8_t* frame, int32_t frameSize,
-    RTP_PAYLOAD_TYPE* type,
+    RTP_PAYLOAD_TYPE type,
     uint16_t chn, uint16_t freq)
 {
     RtpStruct* rtpStruct = (RtpStruct*)rtp;
@@ -1328,12 +1325,12 @@ int32_t RtpUnPacket(
     if (!rtp || !frame || rtpSize < 14)
         return -1;
 
-    if (type)
-        *type = (RTP_PAYLOAD_TYPE)(rtpStruct->header.pt);
+    if (rtpStruct->header.pt < RTP_PAYLOAD_TYPE_UNKNOWN)
+        type = (RTP_PAYLOAD_TYPE)rtpStruct->header.pt;
     seq = ((uint16_t)rtpStruct->header.seq[0] << 8) | rtpStruct->header.seq[1];
 
     // get payload
-    switch (rtpStruct->header.pt)
+    switch (type)
     {
         case RTP_PAYLOAD_TYPE_PCMU:
         case RTP_PAYLOAD_TYPE_G723:
@@ -1374,9 +1371,7 @@ int32_t RtpUnPacket(
         break;
 
         case RTP_PAYLOAD_TYPE_H264:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN1:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN2:
-        case RTP_PAYLOAD_TYPE_H264_UNKNOWN3:
+        case RTP_PAYLOAD_TYPE_UNKNOWN:
         {
             retFrameSize = RtpH264UnPacket(
                 (RtpCircleCache*)cache,
@@ -1390,7 +1385,7 @@ int32_t RtpUnPacket(
 
         default:
         {
-            RTP_INFO("not supported rtp type %d \r\n", rtpStruct->header.pt);
+            RTP_INFO("unknown rtp type %d \r\n", rtpStruct->header.pt);
             retFrameSize = 0;
         }
         break;

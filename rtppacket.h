@@ -21,9 +21,7 @@ typedef enum
     RTP_PAYLOAD_TYPE_H264 = 96,
     RTP_PAYLOAD_TYPE_AAC = 97,
 
-    RTP_PAYLOAD_TYPE_H264_UNKNOWN1 = 114,
-    RTP_PAYLOAD_TYPE_H264_UNKNOWN2 = 118,
-    RTP_PAYLOAD_TYPE_H264_UNKNOWN3 = 123,
+    RTP_PAYLOAD_TYPE_UNKNOWN,
 } RTP_PAYLOAD_TYPE;
 
 /*
@@ -72,7 +70,8 @@ int32_t RtpPacket(
  *  参数:
  *      rtp, rtpSize: 输入rtp包(必须为完整的一包)
  *      frame, frameSize: 输出音视频缓冲区
- *      type: 返回数据类型
+ *      type: 指定数据类型,当载荷为动态类型时,指定一个小于 RTP_PAYLOAD_TYPE_UNKNOWN 的类型
+ *            完全不清楚的可以填 RTP_PAYLOAD_TYPE_UNKNOWN
  *      cache: 缓冲区指针,用于解决网络抖动带来的收包顺序问题
  *      chn,freq: aac补全帧头部时需要,其它时候写0即可
  *  返回: 成功返回帧数据长度, 失败返回-1
@@ -81,7 +80,7 @@ int32_t RtpUnPacket(
     void* cache,
     uint8_t* rtp, int32_t rtpSize,
     uint8_t* frame, int32_t frameSize,
-    RTP_PAYLOAD_TYPE* type,
+    RTP_PAYLOAD_TYPE type,
     uint16_t chn, uint16_t freq);
 
 /*

@@ -91,7 +91,6 @@ int main()
     int32_t rtpSize = 0;
     uint8_t rtp[1024*8] = {0};
 
-    RTP_PAYLOAD_TYPE type;
     void* cache = RtpUnPacketCacheInit(128);
 
     do {
@@ -104,7 +103,7 @@ int main()
                 cache,
                 rtp, rtpSize,
                 frame, sizeof(frame),
-                &type, 2, 44100);
+                RTP_PAYLOAD_TYPE_AAC, 2, 44100);
 
             printf("rtp: %02X %02X %02X %02X, "
                 "ssrc: %02X%02X%02X%02X, "
@@ -116,10 +115,10 @@ int main()
                 rtp[8], rtp[9], rtp[10], rtp[11],
                 rtp[12], rtp[13], rtp[14], rtp[15],
                 rtpSize, index++,
-                type, 
+                rtp[1] & 0x7F, 
                 frame[0], frame[1], frame[2], frame[3], frame[4], frame[5], frame[6],
                 frameSize);
-            
+
             if (frameSize > 0)
                 WriteFile(frame, frameSize);
         }
