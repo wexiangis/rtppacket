@@ -122,7 +122,7 @@ int main()
             if (frameSize > 0)
                 WriteFile(frame, frameSize);
         }
-    } while (rtpSize > 14);
+    } while (rtpSize > 12);
 
     ReadFile(NULL, 0);
     WriteFile(NULL, 0);

@@ -1339,6 +1339,7 @@ int32_t RtpUnPacket(
         case RTP_PAYLOAD_TYPE_G728:
         case RTP_PAYLOAD_TYPE_G729:
         {
+            // RTP_INFO("RTP_PAYLOAD_TYPE_PCMX\r\n");
             if (rtpSize - (int32_t)sizeof(RtpHeader) < RTP_PACKET_PAYLOAD_PCM_SZIE)
             {
                 RTP_INFO("not enough RTP data(%ld) to include PCMX/G7XX frame(%d)\r\n",
@@ -1357,6 +1358,7 @@ int32_t RtpUnPacket(
 
         case RTP_PAYLOAD_TYPE_AAC:
         {
+            // RTP_INFO("RTP_PAYLOAD_TYPE_AAC\r\n");
             retFrameSize = RtpAACUnPacket(
                 (RtpCircleCache*)cache,
                 &rtpStruct->payload[0],
@@ -1373,6 +1375,7 @@ int32_t RtpUnPacket(
         case RTP_PAYLOAD_TYPE_H264:
         case RTP_PAYLOAD_TYPE_UNKNOWN:
         {
+            // RTP_INFO("RTP_PAYLOAD_TYPE_H264\r\n");
             retFrameSize = RtpH264UnPacket(
                 (RtpCircleCache*)cache,
                 &rtpStruct->payload[0],
