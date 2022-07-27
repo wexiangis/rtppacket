@@ -7,13 +7,13 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
-// #define READ_FILE "./out.h264.rtp"
-#define READ_FILE "./data/h264.rtp"
+#define READ_FILE "./out.h264.rtp"
+// #define READ_FILE "./data/h264.rtp"
 #define WRITE_FILE "./out.h264"
 
 int32_t ReadFile(uint8_t* buff, int32_t buffSize)
 {
-    static int fd = 0;
+    static FILE* fp = NULL;
     static uint8_t ssrc[4] = {0};
     static int32_t cacheIndex = 0;
     static uint8_t cache[1024 * 1024] = {0};
@@ -25,18 +25,18 @@ int32_t ReadFile(uint8_t* buff, int32_t buffSize)
     // file close & open
     if (!buff)
     {
-        if (fd > 0)
-            close(fd);
-        fd = -1;
+        if (fp)
+            fclose(fp);
+        fp = NULL;
         return -1;
     }
-    if (fd == 0)
-        fd = open(READ_FILE, O_RDONLY);
-    if (fd < 0)
+    if (!fp)
+        fp = fopen(READ_FILE, "r");
+    if (!fp)
         return -1;
     
     // read
-    ret = read(fd, &cache[cacheIndex], sizeof(cache) - cacheIndex);
+    ret = fread(&cache[cacheIndex], 1, sizeof(cache) - cacheIndex, fp);
     if (ret > 0)
         cacheIndex += ret;
 
@@ -115,7 +115,7 @@ int main()
     do {
         rtpSize = ReadFile(rtp, sizeof(rtp));
         if (rtpSize > 14)
-        {
+        {                
             memset(frame, 0, sizeof(frame));
         
             frameSize = RtpUnPacket(

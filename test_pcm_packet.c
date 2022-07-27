@@ -105,8 +105,6 @@ int main()
                 pktNum,
                 (index * duration) / 1000000 / 60,
                 (index * duration) / 1000000 % 60);
-            
-            usleep(duration);
         }
     } while (frameSize > 0);
 
