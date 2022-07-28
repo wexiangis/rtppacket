@@ -147,6 +147,7 @@ typedef struct {
     int32_t count; /* 目前缓冲区中的元素个数 */
     int32_t seqMax; /* 目前最大的序号 */
     int32_t seqMin; /* 目前最小的序号 */
+    int32_t seqBreak; /* 上一次等待帧序号(有一种等待来自分包尚未收到结束帧,此时只要一直有分包过来就不算超时) */
     int32_t timeCount; /* 等待超时计数 */
     int32_t packetCount; /* 缓存packet个数 */
     RtpCirclePacket* packets; /* packet数组 */
@@ -586,6 +587,14 @@ static int32_t RtpCircleCacheOut(
         /* 分包不连续 */
         else
         {
+            /* 只要分包一直有更新就不算超时 */
+            if (rcc->seqBreak != seqIndex)
+            {
+                rcc->seqBreak = seqIndex;
+                rcc->timeCount = 0;
+            }
+
+            /* 等待 */
             if (rcc->timeCount++ < RTP_CIRCLE_FRAME_TIMEOUT)
                 hitType = RTP_CIRCLE_FRAME_NONE;
             else

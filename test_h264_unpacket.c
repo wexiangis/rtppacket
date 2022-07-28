@@ -7,8 +7,8 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
-#define READ_FILE "./out.h264.rtp"
-// #define READ_FILE "./data/h264.rtp"
+// #define READ_FILE "./out.h264.rtp"
+#define READ_FILE "./data/h264.rtp"
 #define WRITE_FILE "./out.h264"
 
 int32_t ReadFile(uint8_t* buff, int32_t buffSize)
